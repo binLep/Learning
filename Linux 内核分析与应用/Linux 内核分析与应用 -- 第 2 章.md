@@ -222,7 +222,7 @@ void page_init() {
         page_offset += 0x1000;
     }
     pgd = PGD_BASE;
-    // 在页表中填写页到物理地址的映射关系，映射到了4mb 大小的物理内存
+    // 在页表中填写页到物理地址的映射关系，映射到了 4mb 大小的物理内存
     while(phy_add < 0x1000000) {
         *pgt_entry++ = phy_add | PTE_USR | PTE_RW | PTE_PRE;
         phy_add += 0x1000;
