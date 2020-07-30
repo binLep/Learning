@@ -51,7 +51,7 @@ void eval(char* cmdline){
 
     if(!builtin_cmd(argv)){         // 查找用户输入的命令是否为内置命令
 
-        if(sigemptyset(&set))       // 初始化信号集合为空(执行成功则返回 0，如果有错误则返回 -1)
+        if(sigemptyset(&set) < 0)   // 初始化信号集合为空(执行成功则返回 0，如果有错误则返回 -1)
             unix_error("sigemptyset error");
         /* *
          * #define  SIGCHLD	17
@@ -61,8 +61,8 @@ void eval(char* cmdline){
         if(sigaddset(&set, SIGTSTP) || sigaddset(&set, SIGINT) || sigaddset(&set, SIGCHLD))
             unix_error("sigaddset error");
 
-        /* #define  SIG_UNBLOCK 0 */
-        if(sigprocmask(SIG_UNBLOCK, &set, NULL) < 0)
+        /* #define  SIG_BLOCK 0 */
+        if(sigprocmask(SIG_BLOCK, &set, NULL) < 0)
             unix_error("sigprocmask error");
 
         /* *
@@ -79,6 +79,7 @@ void eval(char* cmdline){
         if((pid = fork()) < 0)
             unix_error("fork error");
         else if(!pid){
+            /* #define  SIG_UNBLOCK 1 */
             sigprocmask(SIG_UNBLOCK, &set, NULL);  // 解除子进程的阻塞
             if(setpgid(0, 0) < 0)
                 unix_error("setpgid error");
@@ -99,13 +100,13 @@ void eval(char* cmdline){
                 if(waitpid(pid, &bg, 0) < 0){
                     unix_error("waiting: waitpid error");
                 }
-                else{
-                    printf("%d %s", pid, cmdline);
-                }
             }
         }
+
+        if(pid){
+            printf("[%d] (%d) %s", pid2jid(pid), pid, cmdline);
+        }
     }
-    return;
 }
 ```
 
