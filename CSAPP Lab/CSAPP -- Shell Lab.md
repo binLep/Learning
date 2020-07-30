@@ -2,11 +2,11 @@
 
 完成一个简单的shell程序，总体的框架和辅助代码都已经提供好了，我们需要完成的函数主要以下几个：
 
-- eval: 主要功能是解析cmdline，并且运行. [70 lines]
-- builtin cmd: 辨识和解析出bulidin命令: quit, fg, bg, and jobs. [25lines]
-- do bgfg: 实现bg和fg命令. [50 lines]
+- eval: 主要功能是解析 cmdline，并且运行. [70 lines]
+- builtin_cmd: 辨识和解析出 bulidin 命令: quit, fg, bg, and jobs. [25lines]
+- do bgfg: 实现 bg 和 fg 命令. [50 lines]
 - waitfg: 实现等待前台程序运行结束. [20 lines]
-- sigchld handler: 响应SIGCHLD. 80 lines]
+- sigchld handler: 响应 SIGCHLD. 80 lines]
 - sigint handler: 响应 SIGINT (ctrl-c) 信号. [15 lines]
 - sigtstp handler: 响应 SIGTSTP (ctrl-z) 信号. [15 lines]
 
@@ -108,6 +108,33 @@ void eval(char* cmdline){
         }
     }
 }
+```
+
+## builtin_cmd
+
+这个函数没写之前我的 eval 函数的反汇编里没有显示这个函数，应该是被优化掉了
+
+还有就是我的程序没有加上 canary 保护，剩下的反汇编代码基本都长得一样
+
+### 源码
+
+```c
+/* 
+ * builtin_cmd - If the user has typed a built-in command then execute
+ *    it immediately.  
+ */
+int builtin_cmd(char **argv) 
+{
+    return 0;     /* not a builtin command */
+}
+```
+
+### 题解
+
+
+
+```c
+
 ```
 
 
