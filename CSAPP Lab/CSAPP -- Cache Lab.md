@@ -25,19 +25,20 @@
 
 - 写命中
 
-- - write-through：直接写内存
-    - write-back：先写Cache，当该行被替换时再写内存。此时需要一个额外的dirty位
+  - write-through：直接写内存
+
+  - write-back：先写 Cache，当该行被替换时再写内存。此时需要一个额外的 dirty 位
 
 - 写不命中
 
-- - write-allocate：将内存数据读入Cache中，再写Cache
-    - no-write-allocate：直接写内存
+  - write-allocate：将内存数据读入 Cache 中，再写 Cache
+  - no-write-allocate：直接写内存
 
 Cache 失效的三种原因：
 
 - Cold miss：刚刚使用 Cache 时 Cache 为空，此时必然发生 Cache miss
-- Capacity miss：程序最经常使用的那些数据(工作集,working set)超过了Cache的大小
-- Conflict miss：Cache容量足够大，但是不同的数据映射到了同一组，从而造成Cache line反复被替换的现象
+- Capacity miss：程序最经常使用的那些数据(工作集，working set)超过了 Cache 的大小
+- Conflict miss：Cache容量足够大，但是不同的数据映射到了同一组，从而造成 Cache line 反复被替换的现象
 
 ### Cache 替换策略
 
@@ -60,7 +61,7 @@ LFU（Least Frequently Used，最不经常使用）算法将一段时间内被�
 
 LRU（Least Recently  Used，近期最少使用）算法是把 CPU 近期最少使用的块替换出去
 
-这种替换方法需要随时记录Cache中各块的使用情况，以便确定哪个块是近期最少使用的块
+这种替换方法需要随时记录 Cache 中各块的使用情况，以便确定哪个块是近期最少使用的块
 
 每块也设置一个计数器，Cache 每命中一次，命中块计数器清零，其他各块计数器增 1；当需要替换时，将计数值最大的块换出
 
@@ -68,7 +69,7 @@ LRU 算法相对合理，但实现起来比较复杂，系统开销较大。这�
 
 LRU 算法不能肯定调出去的块近期不会再被使用，所以这种替换算法不能算作最合理、最优秀的算法
 
-但是研究表明，采用这种算法可使 Cache 的命中率达到 90% 左右。
+但是研究表明，采用这种算法可使 Cache 的命中率达到 90% 左右
 
 (3) 随机替换
 
@@ -191,7 +192,6 @@ Examples:
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 #include <unistd.h>
 #include <getopt.h>
 #include <errno.h>
