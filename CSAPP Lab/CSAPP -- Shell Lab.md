@@ -4,7 +4,7 @@
 
 - eval: 主要功能是解析 cmdline，并且运行. [70 lines]
 - builtin_cmd: 辨识和解析出 bulidin 命令: quit, fg, bg, and jobs. [25lines]
-- do bgfg: 实现 bg 和 fg 命令. [50 lines]
+- do_bgfg: 实现 bg 和 fg 命令. [50 lines]
 - waitfg: 实现等待前台程序运行结束. [20 lines]
 - sigchld handler: 响应 SIGCHLD. 80 lines]
 - sigint handler: 响应 SIGINT (ctrl-c) 信号. [15 lines]
@@ -131,11 +131,140 @@ int builtin_cmd(char **argv)
 
 ### 题解
 
+在 eval 函数有记录，该函数的作用是判断用户输入的是否是内置函数：是就返回 1，不是就返回 0
+
+```c
+int builtin_cmd(char** argv){
+    // just handle by argv
+    if(!strcmp(argv[0], "quit"))
+        exit(0);
+    else if(!strcmp(argv[0], "jobs"))
+        listjobs(jobs);
+    else if(!strcmp(argv[0], "bg") || !strcmp(argv[0], "fg"))
+        do_bgfg(argv);
+    else
+        return 0;     /* not a builtin command */
+    return 1;
+}
+```
+
+这里从 IDA 看，对于 bg 和 fg，作者貌似是先匹配 b 和 f 再匹配是否第二个字符是 g 的，这里干脆就全匹配好了
+
+## do_bgfg
+
+### 源码
+
+```c
+/* 
+ * do_bgfg - Execute the builtin bg and fg commands
+ */
+void do_bgfg(char **argv) 
+{
+    return;
+}
+```
+
+### 题解
+
+提前理解一下 kill 函数的用法：向任何进程组或进程发送信号
+
+>  int kill(pid_t pid, int sig);
+>  参数 pid 的可能选择：
+>
+> 1. pid 大于零时，pid 是信号欲送往的进程的标识
+> 2. pid 等于零时，信号将送往所有与调用 kill() 的那个进程属同一个使用组的进程
+> 3. pid 等于 -1 时，信号将送往所有 调用进程 有权给其发送信号 的进程，除了进程 1(init)
+> 4. pid 小于 -1 时，信号将送往以 -pid 为组标识的进程。
+
+```c
+void do_bgfg(char** argv){
+    int id;
+    struct job_t* job;
+    /* 判断 bg fg 命令后有无参数 */
+    if(argv[1] == NULL){
+        printf("%s command requires PID or %%jobid argument\n", argv[0]);
+        return;
+    }
+    /* % 纯粹就是可加可不加，加了就过滤掉罢了 */
+    if(argv[1][0] == '%'){
+        if(argv[1][1] >= '0' && argv[1][1] <= '9'){
+            id = atoi(argv[1] + 1);
+            job = getjobjid(jobs, id);
+            if(job == NULL){
+                /* 第一个参数是 % 的情况下，printf 里的 %s 不需要被括号括起来 */
+                printf("%s: No such job\n", argv[1]);
+                return;
+            }
+        }
+        else{
+            printf("%s: argument must be a PID or %%jobid\n", argv[0]);
+            return;
+        }
+    }
+    else{
+        if(argv[1][0] >= '0' && argv[1][0] <= '9'){
+            id = atoi(argv[1]);
+            job = getjobjid(jobs, id);
+            if(job == NULL){
+                printf("(%s): No such process\n", argv[1]);
+                return;
+            }
+        }
+        else{
+            printf("%s: argument must be a PID or %%jobid\n", argv[0]);
+            return;
+        }
+    }
+
+    if(!strcmp(argv[0], "bg")){
+        /* #define  SIGCONT 18 */
+        if(kill(-(job->pid), SIGCONT) < 0)  // 将后台任务唤醒，在后台运行
+            puts("kill (bg) error");
+        job->state = BG;
+        printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline);
+    }
+    else if(!strcmp(argv[0], "fg")){
+        if(kill(-(job->pid), SIGCONT) < 0)  // 将后台任务唤醒，在前台运行
+            puts("kill (fg) error");
+        job->state = FG;
+        waitfg(job->pid);  // 等待前台程序运行结束
+    }
+    else{
+        puts("do_bgfg: Internal error");
+        exit(0);
+    }
+}
+```
+
+IDA 中显示的源码里写的是 `__printf_chk(1LL, "(%d): No such process\n", job);` 
+
+感觉直接用 %s 输出就完了，IDA 里的 job 是通过 `job = strtol(v1, 0LL, 10);` 来的
+
+## waitfg
+
+### 源码
+
+```c
+/* 
+ * waitfg - Block until process pid is no longer the foreground process
+ */
+void waitfg(pid_t pid)
+{
+    return;
+}
+```
+
+### 题解
+
 
 
 ```c
 
 ```
+
+
+
+
 
 
 
