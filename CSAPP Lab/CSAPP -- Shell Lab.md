@@ -6,9 +6,9 @@
 - builtin_cmd: 辨识和解析出 bulidin 命令: quit, fg, bg, and jobs. [25lines]
 - do_bgfg: 实现 bg 和 fg 命令. [50 lines]
 - waitfg: 实现等待前台程序运行结束. [20 lines]
-- sigchld handler: 响应 SIGCHLD. 80 lines]
-- sigint handler: 响应 SIGINT (ctrl-c) 信号. [15 lines]
-- sigtstp handler: 响应 SIGTSTP (ctrl-z) 信号. [15 lines]
+- sigchld_handler: 响应 SIGCHLD. 80 lines]
+- sigint_handler: 响应 SIGINT (ctrl-c) 信号. [15 lines]
+- sigtstp_handler: 响应 SIGTSTP (ctrl-z) 信号. [15 lines]
 
 ## eval
 
@@ -256,19 +256,189 @@ void waitfg(pid_t pid)
 
 ### 题解
 
-
+这个还算简单，具体就是一直睡眠，直到这个进程的标志位不再是前台标志（FG）或者是进程已经被杀死就行
 
 ```c
-
+void waitfg(pid_t pid){
+    struct job_t* job;
+    if(pid > 0){
+        job = getjobpid(jobs, pid);
+        /* Check if any job is there in foreground state */
+        while(job != NULL && (job->state == FG)){
+            sleep(1);
+        }
+        if(verbose)
+            printf("waitfg: Process (%d) no longer the fg process\n", pid);
+    }
+}
 ```
 
+## sigint_handler
 
+### 源码
 
+```c
+/* 
+ * sigint_handler - The kernel sends a SIGINT to the shell whenver the
+ *    user types ctrl-c at the keyboard.  Catch it and send it along
+ *    to the foreground job.  
+ */
+void sigint_handler(int sig) 
+{
+    return;
+}
+```
 
+### 题解
 
+SIGINT 就是截获 CTRL+C 然后发给前台程序
 
+```c
+void sigint_handler(int sig){
+    if(verbose)
+        puts("sigint_handler: entering");
 
+    pid_t pid = fgpid(jobs);
 
+    if(pid > 0){
+        if(kill(-pid, SIGINT) < 0)
+            unix_error("kill (sigint) error");
+        if(verbose){
+            printf("sigint_handler: Job (%d) killed\n", pid);
+        }
+    }
+    if(verbose){
+        puts("sigint_handler: exiting");
+    }
+}
+```
+
+这段代码反编译后跟 IDA 中的结果一模一样
+
+## sigtstp_handler
+
+### 源码
+
+```c
+/*
+ * sigtstp_handler - The kernel sends a SIGTSTP to the shell whenever
+ *     the user types ctrl-z at the keyboard. Catch it and suspend the
+ *     foreground job by sending it a SIGTSTP.  
+ */
+void sigtstp_handler(int sig){
+    return;
+}
+```
+
+### 题解
+
+SIGTSTP 就是截获 CTRL+Z 然后发给前台程序
+
+```c
+void sigtstp_handler(int sig){
+    if(verbose)
+        puts("sigtstp_handler: entering");
+
+    pid_t pid = fgpid(jobs);
+
+    if(pid > 0){
+        if(kill(-pid, SIGTSTP) < 0)
+            unix_error("kill (tstp) error");
+        if(verbose){
+            printf("sigtstp_handler: Job [%d] (%d) stopped\n", pid2jid(pid), pid);
+        }
+    }
+    if(verbose){
+        puts("sigtstp_handler: exiting");
+    }
+}
+```
+
+## sigchld_handler
+
+### 源码
+
+```c
+/* 
+ * sigchld_handler - The kernel sends a SIGCHLD to the shell whenever
+ *     a child job terminates (becomes a zombie), or stops because it
+ *     received a SIGSTOP or SIGTSTP signal. The handler reaps all
+ *     available zombie children, but doesn't wait for any other
+ *     currently running children to terminate.  
+ */
+void sigchld_handler(int sig) 
+{
+    return;
+}
+```
+
+### 题解
+
+```c
+void sigchld_handler(int sig)
+{
+    int status, jid;
+    pid_t pid;
+    struct job_t *job;
+
+    if(verbose)
+        puts("sigchld_handler: entering");
+
+    /* *
+     * 以非阻塞方式等待所有子进程
+     * waitpid 参数3：
+     *    1.     0     : 执行waitpid时， 只有在子进程 **终止** 时才会返回。
+     *    2. WNOHANG   : 若子进程仍然在运行，则返回0
+     *                   只有设置了这个标志，waitpid 才有可能返回 0
+     *    3. WUNTRACED : 如果子进程由于传递信号而停止，则马上返回。
+     *                   只有设置了这个标志，waitpid 返回时其 WIFSTOPPED(status) 才有可能返回 true
+     * */
+    while((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0){
+
+        // 如果当前这个子进程的 job 已经删除了，则表示有错误发生
+        if((job = getjobpid(jobs, pid)) == NULL){
+            printf("Lost track of (%d)\n", pid);
+            return;
+        }
+
+        jid = job->jid;
+        // 如果这个子进程收到了一个暂停信号（还没退出
+        if(WIFSTOPPED(status)){
+            printf("Job [%d] (%d) stopped by signal %d\n", jid, job->pid, WSTOPSIG(status));
+            job->state = ST;
+        }
+        // 如果这个子进程正常退出
+        else if(WIFEXITED(status)){
+            if(deletejob(jobs, pid))
+                if(verbose){
+                    printf("sigchld_handler: Job [%d] (%d) deleted\n", jid, pid);
+                    printf("sigchld_handler: Job [%d] (%d) terminates OK (status %d)\n", jid, pid, WEXITSTATUS(status));
+                }
+        }
+        // 如果这个子进程因为其他的信号而异常退出，例如 SIGKILL
+        else {
+            if(deletejob(jobs, pid)){
+                if(verbose)
+                    printf("sigchld_handler: Job [%d] (%d) deleted\n", jid, pid);
+            }
+            printf("Job [%d] (%d) terminated by signal %d\n", jid, pid, WTERMSIG(status));
+        }
+    }
+    
+    if(verbose)
+        puts("sigchld_handler: exiting");
+}
+```
+
+## 问题汇总
+
+### 问题一（已解决）
+
+> ctrl + c 后会出现如下错误提示：`tsh> ^Ckill (sigint) error: No such process`
+>
+> 但是 `sigint_handler` 函数没有问题，暂且不知道问题在哪
+
+最后发现是因为还没有写 sigchld_handler 函数
 
 ## 参考链接
 
