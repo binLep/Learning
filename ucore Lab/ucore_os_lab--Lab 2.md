@@ -1,16 +1,12 @@
-[TOC]
+## 练习0：填写已有实验
 
-<div style="page-break-after: always;"></div>
+将 lab1 的 `kern/debug/kdebug.c`、`kern/init/init.c` 以及 `kern/trap/trap.c` 直接复制到 lab2 里即可
 
-# 练习0：填写已有实验
-
-没啥用，复制粘贴就行
-
-# 练习1：实现 first-fit 连续物理内存分配算法
+## 练习1：实现 first-fit 连续物理内存分配算法
 
 因为完全不会，所以去 csdn 找了几篇文章先看了看
 
-### list_entry 结构体：
+### list_entry 结构体
 
 写于：**libs/list.h**
 
@@ -24,7 +20,7 @@ typedef struct list_entry list_entry_t;
 
 这里定义了一个双向链表
 
-### Page 结构体：
+### Page 结构体
 
 写于：**kern/mm/memlayout.h**
 
@@ -59,7 +55,7 @@ struct Page {
 
    释放的时候只要将这个空间通过指针放回到双向链表中
 
-### free_area_t 结构体：
+### free_area_t 结构体
 
 写于：**kern/mm/mmlayout.h**
 
@@ -92,7 +88,7 @@ nr_free：记录当前空闲页的个数
 
 ucore 利用一个物理内存管理类 pmm_manager 确定使用需要的分配算法：**kern/mm/pmm.h**
 
-### pmm_manager 结构体：
+### pmm_manager 结构体
 
 ```c
 struct pmm_manager {
@@ -130,7 +126,7 @@ default_init，default_init_memmap，default_alloc_pages， default_free_pages
 
 ---
 
-### default_init 函数：
+### default_init 函数
 
 ```C
 free_area_t free_area;
@@ -149,7 +145,7 @@ default_init(void) {
 
 即管理所有连续的空闲内存空间块的数据结构 free_area_t 的双向链表和空闲块数
 
-1. **list_init 函数：**
+1. **list_init 函数**
 
    写于：**libs/list.h**
 
@@ -162,7 +158,7 @@ default_init(void) {
 
    大致作用就是初始化双向循环链表
 
-这里有两个宏定义，在 **kern/mm/pmm**：
+这里有两个宏定义，在 **kern/mm/pmm.c**：
 
 ```C
 #define free_list (free_area.free_list)
@@ -173,7 +169,7 @@ default_init(void) {
 
 这是与具体物理内存分配算法无关的，因此直接使用默认的函数实现即可
 
-### default_init_memmap 函数：
+### default_init_memmap 函数
 
 init_memmap 函数主要实现的是一个根据现有的内存情况构建空闲块列表的初始状态的功能
 
@@ -181,7 +177,7 @@ init_memmap 函数主要实现的是一个根据现有的内存情况构建空�
 
 调用过程是：kern_init → pmm_init → page_init → init_memmap
 
-1. **kern_init 函数：**
+1. **kern_init 函数**
 
    写于 **kern/init/init.c**
 
@@ -189,7 +185,7 @@ init_memmap 函数主要实现的是一个根据现有的内存情况构建空�
 
    其中调用了初始化物理内存的函数 pmm_init
 
-2. **pmm_init 函数：**
+2. **pmm_init 函数**
 
    写于：**kern/mm/pmm.c**
 
@@ -197,7 +193,7 @@ init_memmap 函数主要实现的是一个根据现有的内存情况构建空�
 
    调用位置偏前，函数之后的部分可以不管，直接进入 page_init 函数
 
-3. **page_init 函数：**
+3. **page_init 函数**
 
    写于：**kern/mm/pmm.c**
 
@@ -513,7 +509,7 @@ default_init_memmap(struct Page *base, size_t n) {
 
 这里因为 **&free_list** 是双向链表，所以插入是没有问题的，用 **list_add** 也没问题
 
-### default_free_pages 函数：
+### default_free_pages 函数
 
 先看初始函数：
 
@@ -552,7 +548,7 @@ default_free_pages(struct Page *base, size_t n) {
 
 继续先看不认识的函数：
 
-1. **PageProperty 函数：**
+1. **PageProperty 函数**
 
    写于：**kern/mm/memlayout.h**
 
@@ -570,7 +566,7 @@ default_free_pages(struct Page *base, size_t n) {
 
    说白点就是如果该页不是连续空闲空间的第一页，那么就不报错，顺利通过
 
-2. **list_next 函数：**
+2. **list_next 函数**
 
    写于：**libs/list.h**
 
@@ -587,7 +583,7 @@ default_free_pages(struct Page *base, size_t n) {
 
    字面意思，获得该列表的下一个元素
 
-3. **offsetof 函数：**
+3. **offsetof 函数**
 
    写于：**libs/defs.h**
 
@@ -611,7 +607,7 @@ default_free_pages(struct Page *base, size_t n) {
 
    该函数的作用是获取结构体中 member 成员相对于该结构体首元素地址的偏移量
 
-4. **to_struct 函数：**
+4. **to_struct 函数**
 
    写于：**libs/defs.h**
 
@@ -632,7 +628,7 @@ default_free_pages(struct Page *base, size_t n) {
 
    那么这个函数就是用来获得这个成员变量所在结构体的起始地址
 
-5. **le2page 函数：**
+5. **le2page 函数**
 
    写于：**kern/mm/memlayout.h**
 
@@ -646,7 +642,7 @@ default_free_pages(struct Page *base, size_t n) {
 
    这个函数的作用就是依靠作为 Page 结构体中 member 成员变量的 le 变量，得到 le 成员变量所对应的结构体头变量
 
-6. **clear_bit 函数：**
+6. **clear_bit 函数**
 
    写于：**libs/atomic.h**
 
@@ -666,7 +662,7 @@ default_free_pages(struct Page *base, size_t n) {
 
    所以这个函数是用来将 \*addr 的第 nr 位的值设置为 0 的
 
-7. **ClearPageProperty 函数：**
+7. **ClearPageProperty 函数**
 
    写于：**kern/mm/memlayout.h**
 
@@ -678,7 +674,7 @@ default_free_pages(struct Page *base, size_t n) {
 
    意思就是将该页标记为并非是连续空闲空间的第一页
 
-8. **__list_del 函数：**
+8. **__list_del 函数**
 
    写于：**libs/list.h**
 
@@ -700,7 +696,7 @@ default_free_pages(struct Page *base, size_t n) {
 
    但是这里没有清除掉中间的元素，算是一个心里的疑惑
 
-9. **list_del 函数：**
+9. **list_del 函数**
 
    写于：**libs/list.h**
 
@@ -792,7 +788,7 @@ default_free_pages(struct Page *base, size_t n) {
 }
 ```
 
-### default_alloc_pages 函数：
+### default_alloc_pages 函数
 
 先看初始函数：
 
@@ -873,7 +869,7 @@ default_alloc_pages(size_t n) {
 
 至此就完成了 First-Fit 算法
 
-# 练习2：实现寻找虚拟地址对应的页表项
+## 练习2：实现寻找虚拟地址对应的页表项
 
 先看初始函数：
 
@@ -925,7 +921,15 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
 
 先看不了解的定义和函数：
 
-### PDX 定义：
+### PDXSHIFT 宏
+
+写于：**kern/mm/mmu.h**
+
+```c
+#define PDXSHIFT        22                      // offset of PDX in a linear address
+```
+
+### PDX 宏
 
 写于：**kern/mm/mmu.h**
 
@@ -934,13 +938,7 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
 #define PDX(la) ((((uintptr_t)(la)) >> PDXSHIFT) & 0x3FF)
 ```
 
-这里 **PDXSHIFT** 的定义也在该文件中
-
-```c
-#define PDXSHIFT        22                      // offset of PDX in a linear address
-```
-
-### page_init 函数（重点）：
+### page_init 函数
 
 写于：**kern/mm/pmm.c**
 
@@ -1001,9 +999,7 @@ page_init(void) {
 }
 ```
 
-
-
-### page2ppn 函数：
+### page2ppn 函数
 
 写于：**kern/mm/pmm.h**
 
@@ -1016,7 +1012,7 @@ page2ppn(struct Page *page) {
 
 这个函数的意思是：**获取物理页对应的物理页号**
 
-### page2pa 函数：
+### page2pa 函数
 
 写于：**kern/mm/pmm.h**
 
@@ -1035,7 +1031,7 @@ page2pa(struct Page *page) {
 
 该函数的意思是：**获取物理页对应的物理地址**
 
-### __panic 函数：
+### __panic 函数
 
 写于：**kern/debug/panic.c**
 
@@ -1075,7 +1071,7 @@ panic_dead:
 
 该函数的作用在英文的已经有了标注：在不可解决的致命错误上调用。它输出 `panic: 'message'`，然后进入内核监视器。
 
-### panic 宏定义：
+### panic 宏
 
 写于：**kern/debug/assert.h**
 
@@ -1086,7 +1082,24 @@ panic_dead:
 
 读代码就知道这个宏定义是对 **__panic 函数**的封装
 
-### KADDR 宏定义：
+### PTXSHIFT 宏
+
+写于：**kern/mm/mmu.h**
+
+```c
+#define PTXSHIFT        12                      // offset of PTX in a linear address
+```
+
+### PPN 宏
+
+写于：**kern/mm/mmu.h**
+
+```c
+// page number field of address
+#define PPN(la) (((uintptr_t)(la)) >> PTXSHIFT)
+```
+
+### KADDR 宏
 
 写于：**kern/mm/pmm.h**
 
@@ -1107,7 +1120,7 @@ panic_dead:
 
 看英文的意思，该宏定义的作用就是通过物理地址找到对应的逻辑(虚拟)地址
 
-### PDE_ADDR 宏定义：
+### PDE_ADDR 宏
 
 写于：**kern/mm/mmu.h**
 
@@ -1123,12 +1136,16 @@ pte_t *
 get_pte(pde_t *pgdir, uintptr_t la, bool create) {
     /* *
      * pdep -- Page Directory Entry Pointer
-     * 这里的 pgdir 可以看做是页目录表的基址
-     * 获取到页目录表中给定线性地址对应到的页目录项
+     * pgdir:  the kernel virtual base address of PDT
+     * PDX(la) = the index of page directory entry of VIRTUAL ADDRESS la.
+     * 这里的 pgdir 可以是页目录表的基址
+     * PDX 的作用是找到线性地址 la 中负责页目录表的高 10 位的对应下标，正好是左移 22 位得到
+     * 然后利用 pgdir，根据下标找到 PDE，里面的高 20 位存着 Page Table 的基址右移 12 位的值
+     * 将其赋给指针变量 pdep
      * */
     pde_t *pdep = &pgdir[PDX(la)];
     /* *
-     * 检查查找到的页目录项是否存在，如果存在直接放回找到的页表项即可
+     * 检查查找到的页目录项是否存在，如果存在直接放回找到的页表项即可//
      * 即检查是否设置了 Present 位，也就是 PDE_P 位
      * 不过实际上并没有 PDE_P 这个宏，使用注释里告诉我们用等价的 PTE_P 来检查
      * 注释里告诉我们这个位是 PDE 和 PTE 通用的
@@ -1136,11 +1153,9 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
     if (!(*pdep & PTE_P)) {
         struct Page *page;
         /* *
-         * 如果该页目录项是不存在的，那么就不创建新的页表 (!create)
-         * 或者物理空间不足 (page)，直接返回 NULL
+         * 如果该页目录项是不存在的，或者物理空间不足 (page)，那么就不创建新的页表 (!create)，直接返回 NULL
          * alloc_pages 函数就是之前练习一里写的 default_alloc_pages 函数
-         * 通过 alloc_pages() 分配的页地址 并不是真正的页分配的地址
-         * 实际上只是 Page 这个结构体所在的地址而已
+         * 通过 alloc_pages() 分配的页地址 并不是真正的页分配的地址，实际上只是 Page 这个结构体所在的地址而已
          * 故而需要通过使用 page2pa() 将 Page 这个结构体的地址转换成真正物理页地址的线性地址
          * 然后需要注意的是无论是 * 或是 memset 都是对虚拟地址进行操作的
          * 所以需要将真正的物理页地址再转换成内核逻辑(虚拟)地址
@@ -1148,29 +1163,188 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
         if (!create || (page = alloc_page()) == NULL) {
             return NULL;
         }
-        set_page_ref(page, 1);  // 更新该物理页的引用计数
-        uintptr_t pa = page2pa(page);  // 获取物理页对应的物理地址
+        set_page_ref(page, 1);         // 更新该物理页的引用计数
+        uintptr_t pa = page2pa(page);  // 获取物理页对应的物理地址的基址，即左移 12 位
         /* *
-         * 利用 KADDR 宏定义获取该物理页对应的逻辑(虚拟)地址
-         * 此时已经启动了page机制，内核地址空间，这是因为CPU执行的指令中使用的已经是虚拟地址了
-         * 新创建的页表进行初始化
+         * KADDR 的作用是将该地址加上内核基地址得到该项正确的逻辑地址，也就是得到了页表（PTT）真正的的逻辑地址
+         * 然后对新创建的页表进行初始化，赋予可被用户访问、可写权限及存在标志
          * */
         memset(KADDR(pa), 0, PGSIZE);
-        *pdep = pa | PTE_U | PTE_W | PTE_P;  // 设置 PDE 权限
+        *pdep = pa | PTE_U | PTE_W | PTE_P;  // 设置 PTE 的权限
     }
     /* *
+     * PDE_ADDR(*pdep) 清空了 *pdep 的后 12 位，这个值是页表（PTT）的偏移地址
+     * KADDR 的作用是将该地址加上内核基地址得到该项正确的逻辑地址，也就是得到了页表（PTT）真正的的逻辑地址
+     * PTX 的作用是找到线性地址 la 中负责页表的中 10 位的对应下标，正好是左移 12 位得到
+     * 得到的就是 PTE 的地址，这是个指针，所以最后返回的值就是 ptep
      * */
     return &((pte_t *)KADDR(PDE_ADDR(*pdep)))[PTX(la)];
 }
 ```
 
+## 练习3：释放某虚地址所在的页并取消对应二级页表项的映射
 
+源码：
 
+```c
+//page_remove_pte - free an Page sturct which is related linear address la
+//                - and clean(invalidate) pte which is related linear address la
+//note: PT is changed, so the TLB need to be invalidate 
+static inline void
+page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
+    /* LAB2 EXERCISE 3: YOUR CODE
+     *
+     * Please check if ptep is valid, and tlb must be manually updated if mapping is updated
+     *
+     * Maybe you want help comment, BELOW comments can help you finish the code
+     *
+     * Some Useful MACROs and DEFINEs, you can use them in below implementation.
+     * MACROs or Functions:
+     *   struct Page *page pte2page(*ptep): get the according page from the value of a ptep
+     *   free_page : free a page
+     *   page_ref_dec(page) : decrease page->ref. NOTICE: ff page->ref == 0 , then this page should be free.
+     *   tlb_invalidate(pde_t *pgdir, uintptr_t la) : Invalidate a TLB entry, but only if the page tables being
+     *                        edited are the ones currently in use by the processor.
+     * DEFINEs:
+     *   PTE_P           0x001                   // page table/directory entry flags bit : Present
+     */
+#if 0
+    if (0) {                      //(1) check if this page table entry is present
+        struct Page *page = NULL; //(2) find corresponding page to pte
+                                  //(3) decrease page reference
+                                  //(4) and free this page when page reference reachs 0
+                                  //(5) clear second page table entry
+                                  //(6) flush tlb
+    }
+#endif
+}
+```
 
+### page_ref_dec 函数
 
+写于：**kern/mm/pmm.h**
 
+```c
+static inline int
+page_ref_dec(struct Page *page) {
+    page->ref -= 1;
+    return page->ref;
+}
+```
 
-# 参考链接：
+将该页的引用计数减 1
+
+### free_page 函数
+
+写于：**kern/mm/pmm.h**
+
+```c
+#define free_page(page) free_pages(page, 1)
+```
+
+这个就是练习一里咱们自己写的 **default_free_pages 函数**
+
+### rcr3 函数
+
+写于：**libs/x86.h**
+
+```c
+static inline uintptr_t
+rcr3(void) {
+    uintptr_t cr3;
+    asm volatile ("mov %%cr3, %0" : "=r" (cr3) :: "memory");
+    return cr3;
+}
+```
+
+将 cr3 寄存器的值赋给 cr3 变量，返回 cr3 变量的值
+
+### PADDR 宏
+
+写于：**kern/mm/pmm.h**
+
+```c
+/* *
+ * PADDR - takes a kernel virtual address (an address that points above KERNBASE),
+ * where the machine's maximum 256MB of physical memory is mapped and returns the
+ * corresponding physical address.  It panics if you pass it a non-kernel virtual address.
+ * */
+#define PADDR(kva) ({                                                   \
+            uintptr_t __m_kva = (uintptr_t)(kva);                       \
+            if (__m_kva < KERNBASE) {                                   \
+                panic("PADDR called with invalid kva %08lx", __m_kva);  \
+            }                                                           \
+            __m_kva - KERNBASE;                                         \
+        })
+```
+
+PADDR -- 接受内核虚拟地址(位于 KERNBASE 之上的地址)，映射机器的最大 256MB 物理内存，并返回相应的物理地址
+
+如果你给它一个非内核虚拟地址，它会进入 panic 函数；也就是说，这个宏跟 **KADDR 宏**是对着来的
+
+正常情况下，这个函数的作用就是**将当前的虚拟地址减去 KERNBASE 来得到对应的物理地址**
+
+### invlpg 函数
+
+写于：**libs/x86.h**
+
+```c
+static inline void
+invlpg(void *addr) {
+    asm volatile ("invlpg (%0)" :: "r" (addr) : "memory");
+}
+```
+
+补补知识。。俺就看啥都是第一次见
+
+实际的地址转换过程中，处理器首先依据线性地址查找 TLB，假设未发现该线性地址到物理地址的映射关系（TLB miss）
+
+将依据页表中的映射关系填充 TLB（TLB fill），然后再进行地址转换
+
+该指令使与按**地址**指向的内存关联的页面的翻译后备链表缓冲区 (TLB) 失效。
+
+### tlb_invalidate 函数
+
+写于：**kern/mm/pmm.c**
+
+```c
+// invalidate a TLB entry, but only if the page tables being
+// edited are the ones currently in use by the processor.
+void
+tlb_invalidate(pde_t *pgdir, uintptr_t la) {
+    if (rcr3() == PADDR(pgdir)) {
+        invlpg((void *)la);
+    }
+}
+```
+
+判断 cr3 寄存器里的值是否等于 PDT 的物理地址，如果等于那么就取消 la 对应物理页之间的关联，相当于刷新 TLB
+
+### Answer：
+
+```c
+static inline void
+page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
+    if ((*ptep & PTE_P)) {
+        struct Page *page = pte2page(*ptep);
+        if (page_ref_dec(page) == 0) {  // 若引用计数减一后为 0，则释放该物理页
+            free_page(page);
+        }
+        *ptep = 0;                      // 清空 PTE
+        tlb_invalidate(pgdir, la);      // 刷新 TLB
+    }
+}
+```
+
+### 扩展练习Challenge：buddy system（伙伴系统）分配算法
+
+以后再来
+
+### 扩展练习Challenge：任意大小的内存单元slub分配算法
+
+以后再来
+
+## 参考链接：
 
 https://blog.csdn.net/weixin_34327223/article/details/85450897
 
