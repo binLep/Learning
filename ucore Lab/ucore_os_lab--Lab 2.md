@@ -1031,6 +1031,8 @@ page2pa(struct Page *page) {
 
 该函数的意思是：**获取物理页对应的物理地址**
 
+该地址向左移 12 位后就是 PPN，PPN 既是物理地址的高 20 位也是 PDE、PTE 的高 20 位
+
 ### __panic 函数
 
 写于：**kern/debug/panic.c**

@@ -1,4 +1,4 @@
-## 练习0：填写已有实验
+## 4练习0：填写已有实验
 
 将 lab1 的 `kern/debug/kdebug.c`、`kern/init/init.c` 以及 `kern/trap/trap.c` 直接复制到 lab3 里
 
@@ -417,9 +417,196 @@ out:
 
 这具体的以后再看吧
 
+### page_insert 函数
+
+写于：**kern/mm/pmm.c**
+
+```c
+//page_insert - build the map of phy addr of an Page with the linear addr la
+// paramemters:
+//  pgdir: the kernel virtual base address of PDT
+//  page:  the Page which need to map
+//  la:    the linear address need to map
+//  perm:  the permission of this Page which is setted in related pte
+// return value: always 0
+//note: PT is changed, so the TLB need to be invalidate 
+int
+page_insert(pde_t *pgdir, struct Page *page, uintptr_t la, uint32_t perm) {
+    pte_t *ptep = get_pte(pgdir, la, 1);       // 获取 pgdir 对应的 ptep
+    if (ptep == NULL) {                        // 如果获取 PTE 失败，返回 -4
+        return -E_NO_MEM;
+    }
+    page_ref_inc(page);                        // 将该页的引用计数加 1
+    if (*ptep & PTE_P) {                       // 如果 *ptep 有对应的物理地址且存在位为 1
+        struct Page *p = pte2page(*ptep);      // 将 p 的值变为 (*ptep) 对应的物理页的地址
+        if (p == page) {                       // 如果 p 物理页等于 page 物理页
+            page_ref_dec(page);                // 将该页的引用计数减 1
+        }
+        else {                                 // 如果 p 物理页不等于 page 物理页
+            page_remove_pte(pgdir, la, ptep);  // 释放 la 虚地址所在的页并取消对应二级页表项的映射
+        }
+    }
+    // 将 page 地址转换为对应的 pa 地址(对应的 PPN 右移 12 位的值)并加上标志位
+    *ptep = page2pa(page) | PTE_P | perm;
+    tlb_invalidate(pgdir, la);                 // 刷新 TLB
+    return 0;
+}
+```
+
+#### page_ref_inc 函数
+
+写于：**kern/mm/pmm.h**
+
+```c
+static inline int
+page_ref_inc(struct Page *page) {
+    page->ref += 1;
+    return page->ref;
+}
+```
+
+将该页的引用计数加 1
+
+#### pte2page 函数
+
+写于：**kern/mm/pmm.h**
+
+```c
+static inline struct Page *
+pte2page(pte_t pte) {
+    if (!(pte & PTE_P)) {
+        panic("pte2page called with invalid pte");
+    }
+    return pa2page(PTE_ADDR(pte));
+}
+```
+
+先是判断该页的存在位是否为 0，如果为 0，就报错
+
+否则就先利用 PTE_ADDR 将该页的后三位清零，再转化为该物理地址对应的物理页
+
+#### page_remove_pte 函数
+
+写于：**kern/mm/pmm.c**
+
+```c
+//page_remove_pte - free an Page sturct which is related linear address la
+//                - and clean(invalidate) pte which is related linear address la
+//note: PT is changed, so the TLB need to be invalidate 
+static inline void
+page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
+    if ((*ptep & PTE_P)) {
+        struct Page *page = pte2page(*ptep);
+        if (page_ref_dec(page) == 0) {  // 若引用计数减一后为 0，则释放该物理页
+            free_page(page);
+        }
+        *ptep = 0;                      // 清空 PTE
+        tlb_invalidate(pgdir, la);      // 刷新 TLB
+    }
+}
+```
+
+Lab2 的时候你的练习 3 作业，作用就是**释放某虚地址所在的页并取消对应二级页表项的映射**
+
+### swap_map_swappable 函数
+
+写于：**kern/mm/swap.c**
+
+```c
+int
+swap_map_swappable(struct mm_struct *mm, uintptr_t addr, struct Page *page, int swap_in)
+{
+     return sm->map_swappable(mm, addr, page, swap_in);
+}
+```
+
+作用就是使这一页可以置换
+
 ### do_pgfault 函数答案
 
+```c
+int
+do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
+    /* *
+     * #define E_INVAL             3
+     * Invalid parameter
+     * */
+    int ret = -E_INVAL;
+    struct vma_struct *vma = find_vma(mm, addr);  // 试着找到一个包含 addr 的 vma
+
+    pgfault_num++;
+    // 如果 addr 不在一个 mm 的 vma 范围内就输出字符串并退出函数，返回值是 3
+    if (vma == NULL || vma->vm_start > addr) {
+        cprintf("not valid addr %x, and  can not find it in vma\n", addr);
+        goto failed;
+    }
+    // 检查 error_code
+    switch (error_code & 3) {
+    default:
+            /* error code flag : default is 3 ( W/R=1, P=1): write, present */
+    case 2: /* error code flag : (W/R=1, P=0): write, not present 该页不存在*/
+        if (!(vma->vm_flags & VM_WRITE)) {  // 验证该页是不是真的可写，不可写就报错
+            cprintf("do_pgfault failed: error code flag = write AND not present, but the addr's vma cannot write\n");
+            goto failed;
+        }
+        break;
+    case 1: /* error code flag : (W/R=0, P=1): read, present 该页不可写*/
+        cprintf("do_pgfault failed: error code flag = read AND present\n");
+        goto failed;
+    case 0: /* error code flag : (W/R=0, P=0): read, not present 该页既不可写也不存在*/
+        if (!(vma->vm_flags & (VM_READ | VM_EXEC))) {  // 如果还不能读或者是执行代码，就报错
+            cprintf("do_pgfault failed: error code flag = read AND not present, but the addr's vma cannot read or exec\n");
+            goto failed;
+        }
+    }
+    
+    uint32_t perm = PTE_U;           // perm 代表一个页表的标志位，先使其有用户操作的权限
+    if (vma->vm_flags & VM_WRITE) {  // 如果 vma 有可写权限
+        perm |= PTE_W;               // 就更新标志位变量，使其也有可写权限
+    }
+    addr = ROUNDDOWN(addr, PGSIZE);  // 设置 addr 的大小为 4096 的倍数
+
+    ret = -E_NO_MEM;                 // 设置返回值为 -4
+
+    pte_t *ptep = NULL;              // 初始化 PTE 的指针为 NULL
+
+    // try to find a pte, if pte's PT(Page Table) isn't existed, then create a PT.
+    // (notice the 3th parameter '1')
+    if ((ptep = get_pte(mm->pgdir, addr, 1)) == NULL) {   // 得到 PTE 的地址，并将其赋给 ptep
+        cprintf("get_pte in do_pgfault failed\n");        // 如果没有得到 PTE 的地址，报错
+        goto failed;
+    }
+    
+    // if the phy addr isn't exist, then alloc a page & map the phy addr with logical addr
+    if (*ptep == 0) {                                           // 如果 ptep 指针里的物理地址是 0
+        if (pgdir_alloc_page(mm->pgdir, addr, perm) == NULL) {  // 申请一个页并将 ptep 指向新物理地址
+            cprintf("pgdir_alloc_page in do_pgfault failed\n");
+            goto failed;
+        }
+    }
+    else { // if this pte is a swap entry, then load data from disk to a page with phy addr
+           // and call page_insert to map the phy addr with logical addr
+        if(swap_init_ok) {                                // 全局变量，如果 swap 已经完成初始化
+            struct Page *page = NULL;                     // 初始化结构体指针变量 page
+            // 将硬盘 get_pte(mm->pgdir, addr, 0) 中的内容换入到新的 page 中
+            if ((ret = swap_in(mm, addr, &page)) != 0) {  
+                cprintf("swap_in in do_pgfault failed\n");
+                goto failed;
+            }    
+            page_insert(mm->pgdir, page, addr, perm);     // 建立虚拟地址和物理地址之间的对应关系，更新 PTE
+            swap_map_swappable(mm, addr, page, 1);        // 使这一页可以置换
+            page->pra_vaddr = addr;                       // 设置这一页的虚拟地址，在之后用于页面置换算法
+        }
+        else {
+            cprintf("no swap_init_ok but ptep is %x, failed\n",*ptep);
+            goto failed;
+        }
+    }
+    ret = 0;
+failed:
+    return ret;
+}
 ```
 
-```
+## 练习2：补充完成基于FIFO的页面替换算法
 
