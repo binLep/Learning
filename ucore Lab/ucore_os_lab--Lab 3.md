@@ -284,7 +284,138 @@ find_vma(struct mm_struct *mm, uintptr_t addr) {
 #define E_NO_MEM            4   // Request failed due to memory shortage
 ```
 
+### swap_in 函数
 
+写于：**kern/mm/swap.c**
+
+```c
+int
+swap_in(struct mm_struct *mm, uintptr_t addr, struct Page **ptr_result)
+{
+    // Page 结构体指针变量 result，result 代表的地址为 alloc_page 申请的页
+    struct Page *result = alloc_page();  
+    assert(result != NULL);                       // 如果 alloc_page 申请页失败了，就中止程序
+
+    pte_t *ptep = get_pte(mm->pgdir, addr, 0);    // 使 ptep 为 PTE 的地址
+    
+    int r;
+    if ((r = swapfs_read((*ptep), result)) != 0)  // 将硬盘(*ptep)中的内容换入到新的 page(result) 中
+    {
+        assert(r != 0);                           // swapfs_read 函数的返回值若为 0 则是正常的
+    }
+    cprintf("swap_in: load disk swap entry %d with swap_page in vadr 0x%x\n", (*ptep)>>8, addr);
+    *ptr_result = result;                         // 更新 *ptr_result 的值为 result
+    return 0;
+}
+```
+
+#### swapfs_read 函数
+
+写于：**kern/fs/swapfs.c**
+
+```c
+int
+swapfs_read(swap_entry_t entry, struct Page *page) {
+    return ide_read_secs(SWAP_DEV_NO, swap_offset(entry) * PAGE_NSECT, page2kva(page), PAGE_NSECT);
+}
+```
+
+##### SWAP_DEV_NO 宏
+
+写于：**kern/fs/fs.h**
+
+```c
+#define SWAP_DEV_NO         1
+```
+
+##### swap_offset 宏
+
+写于：**kern/mm/swap.h**
+
+```c
+/* *
+ * swap_offset - takes a swap_entry (saved in pte), and returns
+ * the corresponding offset in swap mem_map.
+ * */
+#define swap_offset(entry) ({                                       \
+               size_t __offset = (entry >> 8);                        \
+               if (!(__offset > 0 && __offset < max_swap_offset)) {    \
+                    panic("invalid swap_entry_t = %08x.\n", entry);    \
+               }                                                    \
+               __offset;                                            \
+          })
+```
+
+将传入的地址右移 8 位，再检测其是否满足 swap 的地址范围，满足就返回它
+
+##### PAGE_NSECT 宏
+
+写于：**kern/fs/fs.h**
+
+```c
+#define SECTSIZE            512
+#define PAGE_NSECT          (PGSIZE / SECTSIZE)
+```
+
+已知 PGSIZE 等于 4096，那么 `PAGE_NSECT 就等于 8`
+
+##### page2kva 函数
+
+写于：**kern/mm/pmm.h**
+
+```c
+static inline void *
+page2kva(struct Page *page) {
+    return KADDR(page2pa(page));
+}
+```
+
+page2pa 的作用是利用 page 这个页的地址找到它所对应的 PPN，也就是物理地址 pa 的前 20 位
+
+KADDR 的作用是通过物理地址找到对应的逻辑(虚拟)地址
+
+`所以 page2kva 函数的作用就是通过物理页获取其内核虚拟地址`
+
+##### ide_read_secs 函数
+
+写于：**kern/driver/ide.c**
+
+```c
+int
+ide_read_secs(unsigned short ideno, uint32_t secno, void *dst, size_t nsecs) {
+    // IDE 硬盘的读函数，参数是 IDE 号，扇区号，缓冲区指针和读扇区个数
+    // 一定不能超过最大可读写扇区数，也不能传入无效扇区号
+    assert(nsecs <= MAX_NSECS && VALID_IDE(ideno));
+    // 传入的扇区号和读取的尾扇区号都不能超出最大扇区数
+    assert(secno < MAX_DISK_NSECS && secno + nsecs <= MAX_DISK_NSECS);
+    unsigned short iobase = IO_BASE(ideno), ioctrl = IO_CTRL(ideno);
+    // 等待磁盘准备好
+    ide_wait_ready(iobase, 0);
+
+    // generate interrupt
+    // 向有关寄存器传入 LBA 等参数，准备读
+    outb(ioctrl + ISA_CTRL, 0);
+    outb(iobase + ISA_SECCNT, nsecs);
+    outb(iobase + ISA_SECTOR, secno & 0xFF);
+    outb(iobase + ISA_CYL_LO, (secno >> 8) & 0xFF);
+    outb(iobase + ISA_CYL_HI, (secno >> 16) & 0xFF);
+    outb(iobase + ISA_SDH, 0xE0 | ((ideno & 1) << 4) | ((secno >> 24) & 0xF));
+    outb(iobase + ISA_COMMAND, IDE_CMD_READ);
+
+    int ret = 0;
+    for (; nsecs > 0; nsecs --, dst += SECTSIZE) {       // 循环读取 nsecs 个扇区
+        if ((ret = ide_wait_ready(iobase, 1)) != 0) {    // 出错则 ret 记录错误码，转向 out 返回
+            goto out;
+        }
+        insl(iobase, dst, SECTSIZE / sizeof(uint32_t));  // 向缓冲区读入一个扇区，insl 一次读 32 位
+    }
+// 如果没有出错，则 ret 保存原值 0，返回
+out:
+    return ret;
+}
+```
+
+这具体的以后再看吧
 
 ### do_pgfault 函数答案
 
