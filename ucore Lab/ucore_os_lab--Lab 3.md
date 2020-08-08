@@ -698,7 +698,7 @@ _fifo_map_swappable(struct mm_struct *mm, uintptr_t addr, struct Page *page, int
 
 根据 FIFO 的要求，就是往队首（栈顶）加进去元素，所以这里只需要链表元素加到链表头部后面即可
 
-### _fifo_swap_out_victim 函数源码
+### _fifo_swap_out_victim 函数答案
 
 ```c
 static int
