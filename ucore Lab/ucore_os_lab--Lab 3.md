@@ -1,8 +1,8 @@
-## 4练习0：填写已有实验
+## 练习0：填写已有实验
 
 将 lab1 的 `kern/debug/kdebug.c`、`kern/init/init.c` 以及 `kern/trap/trap.c` 直接复制到 lab3 里
 
-再将 lab2 的 `kern/mm/pmm.c` 和 `kern/mm/default_pmm.c` 复制到 lab3 里即可
+再将 lab2 的 `kern/mm/pmm.c` 和 `kern/mm/default_pmm.c` 里的**内容**复制到 lab3 里即可，**不要复制整个文件！！**
 
 ## 练习1：给未被映射的地址映射上物理页
 
@@ -133,7 +133,29 @@ failed:
 }
 ```
 
-根据流程可以知道这个函数是在内核捕获缺页异常之后，通过 IDT 找到的函数，执行该函数来完成缺页异常的处理，先看两个结构体
+根据流程可以知道这个函数是在内核捕获缺页异常之后，通过 IDT 找到的函数，执行该函数来完成缺页异常的处理，先看三个结构体
+
+### Page 结构体
+
+写于：**kern/mm/memlayout.h**
+
+```c
+/* *
+ * struct Page - Page descriptor structures. Each Page describes one
+ * physical page. In kern/mm/pmm.h, you can find lots of useful functions
+ * that convert Page to other data types, such as phyical address.
+ * */
+struct Page {
+    int ref;                        // 这个页被页表的引用记数，也就是映射此物理页的虚拟页个数
+    uint32_t flags;                 // flags 表示此物理页的状态，1 代表该页是空闲的，0 代表该页已分配
+    unsigned int property;          // 记录连续空闲页的数量，只有该页是连续内存块的开始地址时该变量才被使用
+    list_entry_t page_link;         // 便于把多个连续内存空闲块链接在一起的双向链表指针(用于物理内存分配算法)
+    list_entry_t pra_page_link;     // 便于把多个连续内存空闲块链接在一起的双向链表指针(用于页面置换算法)
+    uintptr_t pra_vaddr;            // 这一页的虚拟地址(用于页面置换算法)
+};
+```
+
+是的又是它，但是它比 Lab2 多了两个变量：`pra_page_link` 和 `pra_vaddr`
 
 ### mm_struct 结构体
 
@@ -610,3 +632,98 @@ failed:
 
 ## 练习2：补充完成基于FIFO的页面替换算法
 
+这里需要更改两个函数 `_fifo_map_swappable` 和 `_fifo_swap_out_victim`，先看两个函数的源码
+
+### _fifo_map_swappable 函数源码
+
+写于：**kern/mm/swap_fifo.c**
+
+```c
+/*
+ * (3)_fifo_map_swappable: According FIFO PRA, we should link the most recent arrival page at the back of pra_list_head qeueue
+ */
+static int
+_fifo_map_swappable(struct mm_struct *mm, uintptr_t addr, struct Page *page, int swap_in)
+{
+    list_entry_t *head=(list_entry_t*) mm->sm_priv;
+    list_entry_t *entry=&(page->pra_page_link);
+ 
+    assert(entry != NULL && head != NULL);
+    //record the page access situlation
+    /*LAB3 EXERCISE 2: YOUR CODE*/ 
+    //(1)link the most recent arrival page at the back of the pra_list_head qeueue.
+    return 0;
+}
+```
+
+### _fifo_swap_out_victim 函数源码
+
+写于：**kern/mm/swap_fifo.c**
+
+```c
+/*
+ *  (4)_fifo_swap_out_victim: According FIFO PRA, we should unlink the  earliest arrival page in front of pra_list_head qeueue,
+ *                            then assign the value of *ptr_page to the addr of this page.
+ */
+static int
+_fifo_swap_out_victim(struct mm_struct *mm, struct Page ** ptr_page, int in_tick)
+{
+     list_entry_t *head=(list_entry_t*) mm->sm_priv;
+         assert(head != NULL);
+     assert(in_tick==0);
+     /* Select the victim */
+     /*LAB3 EXERCISE 2: YOUR CODE*/ 
+     //(1)  unlink the  earliest arrival page in front of pra_list_head qeueue
+     //(2)  assign the value of *ptr_page to the addr of this page
+     return 0;
+}
+```
+
+发现没啥不认识的函数，下面直接放答案
+
+### _fifo_map_swappable 函数答案
+
+```c
+static int
+_fifo_map_swappable(struct mm_struct *mm, uintptr_t addr, struct Page *page, int swap_in)
+{
+    list_entry_t *head = (list_entry_t*) mm->sm_priv;  // sm_priv 的作用是记录访问情况链表头地址
+    list_entry_t *entry = &(page->pra_page_link);      // 设置 entry 的值为该页的链表地址
+ 
+    assert(entry != NULL && head != NULL);             // 如果出现地址为 0 的错误就中止程序
+    list_add(head, entry);  // 将该页的链表地址(entry)加到链表头节点(mm->sm_priv)的后面
+    return 0;
+}
+```
+
+根据 FIFO 的要求，就是往队首（栈顶）加进去元素，所以这里只需要链表元素加到链表头部后面即可
+
+### _fifo_swap_out_victim 函数源码
+
+```c
+static int
+_fifo_swap_out_victim(struct mm_struct *mm, struct Page ** ptr_page, int in_tick)
+{
+    list_entry_t *head = (list_entry_t*) mm->sm_priv;  // sm_priv 的作用是记录访问情况链表头地址
+    assert(head != NULL && in_tick == 0);         // 如果出现头节点为空或者 in_tick 不为 0 的情况就中止程序
+    list_entry_t *le = head->prev;                // 设置 le 为头节点的下一个节点
+    assert(head != le);                           // 要是 le 等于 head 就说明双向链表为空，中止程序
+    struct Page *p = le2page(le, pra_page_link);  // 通过链表地址找到对应的 Page 结构体
+    assert(p != NULL);                            // 没找到 Page 结构体就中止程序
+    list_del(le);                                 // 删除双向链表上的 le 节点
+    *ptr_page = p;                                // 更新 *ptr_page 为 p
+    return 0;
+}
+```
+
+该函数的作用是选择不需要的页换入硬盘
+
+对于 FIFO 来说，只需要在队尾（栈底）取出一项，即从双向链表中删去链表头部的上一个元素，并将 `*ptr_page` 设置为该页即可
+
+## 扩展练习 Challenge 1：实现识别dirty bit的 extended clock页替换算法
+
+先咕咕咕，会回来的
+
+## 扩展练习 Challenge 2：实现不考虑实现开销和效率的LRU页替换算法
+
+同上
