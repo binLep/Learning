@@ -133,3 +133,162 @@ failed:
 }
 ```
 
+根据流程可以知道这个函数是在内核捕获缺页异常之后，通过 IDT 找到的函数，执行该函数来完成缺页异常的处理，先看两个结构体
+
+### mm_struct 结构体
+
+写于：**kern/mm/vmm.c**
+
+```c
+struct mm_struct {                 // 描述一个进程的虚拟地址空间 每个进程的 pcb 中会有一个指针指向本结构体
+    list_entry_t mmap_list;        // 链接同一页目录表的虚拟内存空间中双向链表的头节点 
+    struct vma_struct *mmap_cache; // 当前正在使用的虚拟内存空间
+    pde_t *pgdir;                  // mm_struct 所维护的页表地址(用来找 PTE)
+    int map_count;                 // 虚拟内存块的数目
+    void *sm_priv;                 // 记录访问情况链表头地址(用于置换算法)
+};
+```
+
+### vma_struct 结构体
+
+写于：**kern/mm/vmm.c**
+
+```c
+struct vma_struct {          // 虚拟内存空间
+    struct mm_struct *vm_mm; // 虚拟内存空间属于的进程
+    uintptr_t vm_start;      // 连续地址的虚拟内存空间的起始位置和结束位置
+    uintptr_t vm_end;
+    uint32_t vm_flags;       // 虚拟内存空间的属性 (读/写/执行)
+    list_entry_t list_link;  // 双向链表，从小到大将虚拟内存空间链接起来
+};
+```
+
+### find_vma 函数
+
+写于：**kern/mm/vmm.c**
+
+```c
+// find_vma - find a vma  (vma->vm_start <= addr <= vma_vm_end)
+struct vma_struct *
+find_vma(struct mm_struct *mm, uintptr_t addr) {
+    struct vma_struct *vma = NULL;  // 初始化 vma 指针变量
+    if (mm != NULL) {               // 如果 mm 指针变量不为 0，就进入 if 语句，不然直接返回 NULL
+        vma = mm->mmap_cache;       // 将 vma 指针变量的值修改为当前正在使用的虚拟内存空间
+        /* 如果当前正在使用的虚拟内存空间不为空，且地址处于正确的 vma 地址内，就不进入 if 语句 */
+        if (!(vma != NULL && vma->vm_start <= addr && vma->vm_end > addr)) {
+            /* 这下面是处理 vma 异常时的状况的 */
+            bool found = 0;                                     // 设立标志位，用于之后确认是否找到符合的 vma
+            list_entry_t *list = &(mm->mmap_list), *le = list;  // 这里 *list 和 *le 的值都是 mm->mmap_list
+            while ((le = list_next(le)) != list) {              // 没遍历完双向链表就一直遍历
+                vma = le2vma(le, list_link);                    // 根据链表找到对应的 vma 结构体基址
+                if (vma->vm_start<=addr && addr < vma->vm_end) {// 如果该虚拟地址处在吻合的 vma 地址范围
+                    found = 1;                                  // 更新标志位为 1，即找到了符合的 vma
+                    break;
+                }
+            }
+            if (!found) {                                       // 如果 found 为 0，则没有符合的 vma
+                vma = NULL;                                     // 并且更新 vma 为 NULL，之后函数会返回 NULL
+            }
+        }
+        if (vma != NULL) {                                      // vma 不为 NULL 就进入 if 语句
+            mm->mmap_cache = vma;                               // 更新当前正在使用的虚拟内存空间为 vma
+        }
+    }
+    return vma;
+}
+```
+
+#### le2vma 宏
+
+写于：**kern/mm/vmm.h**
+
+```c
+#define le2vma(le, member)                  \
+    to_struct((le), struct vma_struct, member)
+```
+
+和 Lab2 中 提到的 le2page 函数基本是一个意思
+
+作用是依靠作为 vma_struct 结构体中 member 成员变量的 le 变量，得到 le 成员变量所对应的 vma_struct 结构体的基地址
+
+### ROUNDDOWN 宏
+
+写于：**libs/defs.h**
+
+```c++
+/* *
+ * Rounding operations (efficient when n is a power of 2)
+ * Round down to the nearest multiple of n
+ * */
+#define ROUNDDOWN(a, n) ({                                          \
+            size_t __a = (size_t)(a);                               \
+            (typeof(a))(__a - __a % (n));                           \
+        })
+```
+
+注释意思：四舍五入操作(当 n 是 2 的幂时有效)，四舍五入到 n 的倍数
+
+其实应该只要 n 不是 0，都可以进行对于 a 的倍数的四舍五入
+
+只是在这个 ucore 的代码里用的都是 2 的倍数（都用的 PGSIZE == 4096）
+
+拿 4 举例的话就是，你能得到：4、8、12、16、20、...
+
+如果 a 是 15 的话，`ROUNDDOWN(15, 4) == 12`
+
+### VM_READ 宏
+
+写于：**kern/mm/vmm.h**
+
+```c
+#define VM_READ                 0x00000001
+```
+
+### VM_WRITE 宏
+
+写于：**kern/mm/vmm.h**
+
+```c
+#define VM_WRITE                0x00000002
+```
+
+### VM_EXEC 宏
+
+写于：**kern/mm/vmm.h**
+
+```c
+#define VM_EXEC                 0x00000004
+```
+
+### PGSIZE 宏
+
+写于：**kern/mm/mmu.h**
+
+```c
+#define PGSIZE          4096                    // bytes mapped by a page
+```
+
+### E_INVAL 宏
+
+写于：**libs/error.h**
+
+```c
+#define E_INVAL             3   // Invalid parameter
+```
+
+### E_NO_MEM 宏
+
+写于：**libs/error.h**
+
+```c
+#define E_NO_MEM            4   // Request failed due to memory shortage
+```
+
+
+
+### do_pgfault 函数答案
+
+```
+
+```
+
