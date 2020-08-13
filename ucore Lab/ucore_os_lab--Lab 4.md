@@ -616,46 +616,48 @@ enum proc_state {
 ```c
 int
 do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
-    int ret = -E_NO_FREE_PROC;                     // 设置返回值为 -5
-    struct proc_struct *proc;                      // 定义 proc_struct 结构体指针变量 proc（子进程）
-    if (nr_process >= MAX_PROCESS) {               // 进程总数（全局变量）如果 >= 0x1000
-        goto fork_out;                             // 就跳转到 fork_out 地址，此时返回值是 -5
+    int ret = -E_NO_FREE_PROC; // 设置返回值为 -5
+    struct proc_struct *proc;  // 定义 proc_struct 结构体指针变量 proc（子进程）
+    if (nr_process >= MAX_PROCESS) {  // 进程总数（全局变量）如果 >= 0x1000
+        goto fork_out;         // 就跳转到 fork_out 地址，此时返回值是 -5
     }
-    ret = -E_NO_MEM;                               // 更换返回值为 -4
-    if ((proc = alloc_proc()) == NULL) {           // 申请一个 proc_struct 结构体
-        goto fork_out;                             // 若是申请失败就跳转到 fork_out 地址，此时返回值是 -4
+    ret = -E_NO_MEM;           // 更换返回值为 -4
+    if ((proc = alloc_proc()) == NULL) {  // 申请一个 proc_struct 结构体
+        goto fork_out;  // 若是申请失败就跳转到 fork_out 地址，此时返回值是 -4
     }
 
-    proc->parent = current;                        // 设置当前进程的父进程地址
+    proc->parent = current;    // 设置当前进程的父进程地址
 
-    if (setup_kstack(proc) != 0) {                 // 分配并初始化内核栈，返回值是 0 则成功分配
-        goto bad_fork_cleanup_proc;                // 创建失败，即内存不足，则跳转到 bad_fork_cleanup_proc
+    if (setup_kstack(proc) != 0) {  // 分配并初始化内核栈，返回值是 0 则成功分配
+        // 创建失败，即内存不足，则跳转到 bad_fork_cleanup_proc
+        goto bad_fork_cleanup_proc;
     }
-    if (copy_mm(clone_flags, proc) != 0) {         // 将父进程的内存信息复制到子进程
-        goto bad_fork_cleanup_kstack;              // 出错就跳转到 bad_fork_cleanup_kstack
+    if (copy_mm(clone_flags, proc) != 0) {  // 将父进程的内存信息复制到子进程
+        // 出错就跳转到 bad_fork_cleanup_kstack
+        goto bad_fork_cleanup_kstack;
     }
-    copy_thread(proc, stack, tf);                  // 复制父进程的中断帧和上下文
+    copy_thread(proc, stack, tf);   // 复制父进程的中断帧和上下文
 
     bool intr_flag;
-    local_intr_save(intr_flag);                    // 禁止中断发生，保护代码运行
+    local_intr_save(intr_flag);     // 禁止中断发生，保护代码运行
     {
-        proc->pid = get_pid();                     // 获取该程序的 pid
-        hash_proc(proc);                           // 将该节点添加进哈希列表
+        proc->pid = get_pid();      // 获取该程序的 pid
+        hash_proc(proc);            // 将该节点添加进哈希列表
         list_add(&proc_list, &(proc->list_link));  // 将该节点添加进双向链表
-        nr_process ++;                             // 记录总进程数的变量自增 1
+        nr_process ++;              // 记录总进程数的变量自增 1
     }
-    local_intr_restore(intr_flag);                 // 如果 intr_flag 不为 0，则允许中断发生
+    local_intr_restore(intr_flag);  // 如果 intr_flag 不为 0，则允许中断发生
 
-    wakeup_proc(proc);                             // 唤醒该进程
+    wakeup_proc(proc);              // 唤醒该进程
 
-    ret = proc->pid;                               // 更新返回值为该进程的 pid
+    ret = proc->pid;                // 更新返回值为该进程的 pid
 fork_out:
     return ret;
 
 bad_fork_cleanup_kstack:
-    put_kstack(proc);                              // 释放内核栈
+    put_kstack(proc);               // 释放内核栈
 bad_fork_cleanup_proc:
-    kfree(proc);                                   // 释放申请的物理页，跳转到 fork_out
+    kfree(proc);                    // 释放申请的物理页，跳转到 fork_out
     goto fork_out;
 }
 ```
