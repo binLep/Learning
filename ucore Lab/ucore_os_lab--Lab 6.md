@@ -145,3 +145,276 @@ alloc_proc(void) {
 }
 ```
 
+## 练习1: 使用 Round Robin 调度算法
+
+大致流程如下：
+
+`copy_mm → lock_mm → lock → schedule`
+
+之后再调用关于 RR 算法来进行调度，先了解一下有关的结构体
+
+### run_queue 结构体
+
+写于：**kern/sched/sched.h**
+
+```c
+struct run_queue {
+    list_entry_t run_list;  // 双向链表的头节点
+    unsigned int proc_num;  // 就绪态进程的个数
+    int max_time_slice;     // 最大时间片
+    skew_heap_entry_t *lab6_run_pool;
+};
+```
+
+### copy_mm 函数
+
+写于：**kern/process/proc.c**
+
+```c
+// copy_mm - process "proc" duplicate OR share process "current"'s mm according clone_flags
+//         - if clone_flags & CLONE_VM, then "share" ; else "duplicate"
+static int
+copy_mm(uint32_t clone_flags, struct proc_struct *proc) {
+    struct mm_struct *mm, *oldmm = current->mm;
+
+    /* current is a kernel thread */
+    if (oldmm == NULL) {
+        return 0;
+    }
+    if (clone_flags & CLONE_VM) {
+        mm = oldmm;
+        goto good_mm;
+    }
+
+    int ret = -E_NO_MEM;
+    if ((mm = mm_create()) == NULL) {
+        goto bad_mm;
+    }
+    if (setup_pgdir(mm) != 0) {
+        goto bad_pgdir_cleanup_mm;
+    }
+
+    lock_mm(oldmm);
+    {
+        ret = dup_mmap(mm, oldmm);
+    }
+    unlock_mm(oldmm);
+
+    if (ret != 0) {
+        goto bad_dup_cleanup_mmap;
+    }
+
+good_mm:
+    mm_count_inc(mm);
+    proc->mm = mm;
+    proc->cr3 = PADDR(mm->pgdir);
+    return 0;
+bad_dup_cleanup_mmap:
+    exit_mmap(mm);
+    put_pgdir(mm);
+bad_pgdir_cleanup_mm:
+    mm_destroy(mm);
+bad_mm:
+    return ret;
+}
+```
+
+### lock_mm 函数
+
+写于：**kern/mm/vmm.h**
+
+```c
+static inline void
+lock_mm(struct mm_struct *mm) {
+    if (mm != NULL) {
+        lock(&(mm->mm_lock));
+    }
+}
+```
+
+### lock 函数
+
+写于：**kern/sync/sync.c**
+
+```c
+static inline void
+lock(lock_t *lock) {
+    while (!try_lock(lock)) {
+        schedule();
+    }
+}
+```
+
+### schedule 函数
+
+写于：**kern/schedule/sched.c**
+
+```c
+void
+schedule(void) {
+    bool intr_flag;
+    struct proc_struct *next;
+    local_intr_save(intr_flag);
+    {
+        current->need_resched = 0;
+        if (current->state == PROC_RUNNABLE) {
+            sched_class_enqueue(current);
+        }
+        if ((next = sched_class_pick_next()) != NULL) {
+            sched_class_dequeue(next);
+        }
+        if (next == NULL) {
+            next = idleproc;
+        }
+        next->runs ++;
+        if (next != current) {
+            proc_run(next);
+        }
+    }
+    local_intr_restore(intr_flag);
+}
+```
+
+### sched_class_enqueue 函数
+
+写于：**kern/schedule/sched.c**
+
+```c
+static inline void
+sched_class_enqueue(struct proc_struct *proc) {
+    if (proc != idleproc) {
+        sched_class->enqueue(rq, proc);
+    }
+}
+```
+
+### sched_class_dequeue 函数
+
+写于：**kern/schedule/sched.c**
+
+```c
+static inline void
+sched_class_dequeue(struct proc_struct *proc) {
+    sched_class->dequeue(rq, proc);
+}
+```
+
+### sched_class_pick_next 函数
+
+写于：**kern/schedule/sched.c**
+
+```c
+static inline struct proc_struct *
+sched_class_pick_next(void) {
+    return sched_class->pick_next(rq);
+}
+```
+
+### sched_class_proc_tick 函数
+
+写于：**kern/schedule/sched.c**
+
+```c
+void
+sched_class_proc_tick(struct proc_struct *proc) {
+    if (proc != idleproc) {
+        sched_class->proc_tick(rq, proc);  // 进入 RR 调度
+    }
+    else {
+        proc->need_resched = 1;  // 代表该进程应该被换出去
+    }
+}
+```
+
+在时钟中断时会触发这个函数的调用，在 RR 调度中，每次调用都会减少当前进程时间片
+
+### RR_init 函数
+
+写于：**kern/schedule/default_sched.c**
+
+```c
+static void
+RR_init(struct run_queue *rq) {
+    list_init(&(rq->run_list));  // 创建 RR 算法的双向链表
+    rq->proc_num = 0;            // 初始化就绪态进程的个数
+}
+```
+
+### RR_enqueue 函数
+
+写于：**kern/schedule/default_sched.c**
+
+```c
+static void
+RR_enqueue(struct run_queue *rq, struct proc_struct *proc) {
+    assert(list_empty(&(proc->run_link)));  // 确认双向链表是否为空
+    list_add_before(&(rq->run_list), &(proc->run_link));  // 将元素放入队列中
+    if (proc->time_slice == 0 || proc->time_slice > rq->max_time_slice) {
+        proc->time_slice = rq->max_time_slice;  // 初始化进程的时间片
+    }
+    proc->rq = rq;  // 更新
+    rq->proc_num ++;
+}
+```
+
+### RR_dequeue 函数
+
+写于：**kern/schedule/default_sched.c**
+
+```c
+static void
+RR_dequeue(struct run_queue *rq, struct proc_struct *proc) {
+    assert(!list_empty(&(proc->run_link)) && proc->rq == rq);
+    list_del_init(&(proc->run_link));
+    rq->proc_num --;
+}
+```
+
+### RR_pick_next 函数
+
+写于：**kern/schedule/default_sched.c**
+
+```c
+static struct proc_struct *
+RR_pick_next(struct run_queue *rq) {
+    list_entry_t *le = list_next(&(rq->run_list));
+    if (le != &(rq->run_list)) {
+        return le2proc(le, run_link);
+    }
+    return NULL;
+}
+```
+
+### RR_proc_tick 函数
+
+写于：**kern/schedule/default_sched.c**
+
+```c
+static void
+RR_proc_tick(struct run_queue *rq, struct proc_struct *proc) {
+    if (proc->time_slice > 0) {
+        proc->time_slice --;
+    }
+    if (proc->time_slice == 0) {
+        proc->need_resched = 1;  // 代表该进程应该被换出去
+    }
+}
+```
+
+时间片没用完就减小时间片的大小，用完了就标记出该进程是需要被调度的进程
+
+### default_sched_class 结构体变量
+
+写于：**kern/schedule/default_sched.c**
+
+```c
+struct sched_class default_sched_class = {
+    .name = "RR_scheduler",
+    .init = RR_init,
+    .enqueue = RR_enqueue,
+    .dequeue = RR_dequeue,
+    .pick_next = RR_pick_next,
+    .proc_tick = RR_proc_tick,
+};
+```
+
