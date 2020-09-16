@@ -59,7 +59,7 @@ size：用来记录当前块的大小
 
 fd：记录前驱节点
 
-bk：记录后记节点
+bk：记录后继节点
 
 fd_nextsize：记录 large bin 的前驱节点
 
