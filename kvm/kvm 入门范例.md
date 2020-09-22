@@ -6,7 +6,7 @@
 
     退出执行可以理解为将 CPU 执行上下文返回到 QEMU
 
-2. 至少有 4 个 out 指令，KVM 才会退出，进而去访问 QEMU
+2. 每次进行 IO 操作都会造成虚拟机退出，比如 `out dx, al`
 
 ## kmv.c
 
@@ -204,7 +204,7 @@ kvm 在运行时会执行 code 内的代码，我们在 code 里写入我们想�
 
 就好比将 fxxlag 放入 rax 后，进行如下汇编也可在最后使 tmp 得到 flag 字符串从而绕过检测
 
-```assembly
+```properties
 movabs rax, 0x67616c787866
 out dx, al
 shr rax, 24
@@ -215,7 +215,7 @@ shr rax, 8
 out dx, al
 ```
 
-上面的汇编满足的 4 个 out 指令，并且每次写入的字符组合起来就是 flag 字符串
+上面的汇编每次写入的字符组合起来就是 flag 字符串
 
 ### setup_regs 函数
 
