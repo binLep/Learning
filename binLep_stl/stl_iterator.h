@@ -1,7 +1,6 @@
 #ifndef BINLEP_STL_INTERNAL_ITERATOR_H
 #define BINLEP_STL_INTERNAL_ITERATOR_H
 
-#include "stl_config.h"
 #include "stl_iterator_base.h"
 
 __STL_BEGIN_NAMESPACE
