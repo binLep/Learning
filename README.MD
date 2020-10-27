@@ -9,3 +9,9 @@
 
 1. 【已完成】预期解，利用 shellcode 和修改 io 指针地址达到提权条件
 2. 【未完成】利用程序中的 ROP 达成提权条件
+
+<details>
+<summary>2020.10.27：N1CTF 2020 题目复现</summary>
+
++ [x] [Signin](http://binlep.top/2020/10/27/%e3%80%90writeup%e3%80%91n1ctf-2020-pwn-%e9%a2%98%e8%a7%a3/#Signin)：一道入门的 stl vector 利用
+
